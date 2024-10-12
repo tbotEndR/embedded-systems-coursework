@@ -33,16 +33,21 @@ int main(void)
     PORTB |= (1<<PORTB0) | (1<<PORTB1);
 
     uint8_t flags = 0x00;
-    /* 	Bit0: StartPressed | Bit1: ResetPressed 
+    /* 	
+	Bit0: StartPressed | Bit1: ResetPressed 
 	Bit2: TimerStarted | Bit3: TimerReset  
 	Bits 4-7: User Input Limit
     */
     int8_t countdown = 0x07, loop_counter = 0x00;
+    //  countdown is <= 7, use last 4 bits to save user input limit
     flags |= (countdown << DIPLIMIT_REG);
 
     while(1)
     {
-	/*	Start Button Logic  */
+	/*	Start Button Logic:
+	 *	- detect button rising edge
+	 *	- set TimerStarted flag		*/
+
 	if (!(PIND & (1<<PIND2)) && !(flags & (1<<STARTPRESS_F)))
 	{
 	    flags |= (1<<STARTPRESS_F) | (1<<TIMERSTART_F);
@@ -53,7 +58,10 @@ int main(void)
 	    flags &= ~(1<<STARTPRESS_F);
 	}
 
-	/*	Reset Button Logic  */
+	/*	Reset Button Logic:
+	 *	- detect button rising edge
+	 *	- set TimerReset flag		*/
+
 	if (!(PIND & (1<<PIND6)) && !(flags & (1<<RESETPRESS_F)))
 	{
 	    flags |= (1<<RESETPRESS_F) | (1<<TIMERRESET_F);
@@ -64,7 +72,10 @@ int main(void)
 	    flags &= ~(1<<RESETPRESS_F);
 	}
 
-	/*	Timer Started State  */
+	/*	Timer Started State:
+	 *	- output countdown bits on leds 1-3
+	 * 	- decrement countdown every 1s		*/
+
 	if (flags & (1<<TIMERSTART_F))
 	{
 	    if (loop_counter >= 10)
@@ -77,7 +88,10 @@ int main(void)
 	    }
 	}
 
-	/*	Timer Reset State  */
+	/*	Timer Reset State:
+	 *	- read user input from dip switches 1-3
+	 *	- save user input as new countdown limit		*/
+
 	if (flags & (1<<TIMERRESET_F))
 	{
 	    countdown = ~((PIND & (1<<PIND7))>>5 | (PINB & (1<<PINB0))<<1 | (PINB & (1<<PINB1))>>1) & 0x07;
