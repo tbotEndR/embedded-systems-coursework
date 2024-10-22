@@ -1,0 +1,3 @@
+avr-gcc -O1 -Wall -mmcu=atmega328p $TARGET.c -o $TARGET.o
+avr-objcopy -O ihex $TARGET.o $TARGET.hex
+avrdude -c usbasp -p atmega328P -U flash:w:$TARGET.hex:i

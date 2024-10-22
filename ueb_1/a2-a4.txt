@@ -1,0 +1,32 @@
+2a:
+- Atmega DC current per I/O Pin: 40mA
+- Operating Voltage: 5V (max 6V)
+- LED max 30mA
+- LED Operating Voltage: 2V
+
+Spannungsdifferenz Pin / LED: 3V
+LED Strom bei 2V: 20mA
+
+R = U / I -> R = 3 / 0.02 = 151 Ohm
+
+2b:
+Stromstärke: 
+I = U / R -> I = 3V / 151 Oh =	19.87mA 
+Gesamtstromstärke 19.87mA * 2, da maximal 2 LEDs gleichzeitig betrieben werden.
+
+4a:
+16MHz = 16.000.000 Takte/s
+1s / 16.000.000 Takte = 62.5ns pro Takt
+
+4b:
+Siehe Seite 412 Pin Threshold
+Bei 5V ab ca. 2.6V = 1, 0.5V - 2.1V = 0
+
+t1: 1
+t2: 1
+t3: / (1 wegen Pullup?)
+t4: 0
+t5: 0
+t6: 1
+t7: / (1 wegen Pullup?)
+t8: 0

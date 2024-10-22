@@ -39,7 +39,6 @@ int main(void)
 	Bits 4-7: User Input Limit
     */
     int8_t countdown = 0x07, loop_counter = 0x00;
-    //  countdown is <= 7, use last 4 bits to save user input limit
     flags |= (countdown << DIPLIMIT_REG);
 
     while(1)
