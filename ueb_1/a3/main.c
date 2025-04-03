@@ -1,107 +1,85 @@
 #define F_CPU 16000000L
-#define STARTPRESS_F 0
-#define RESETPRESS_F 1
-#define TIMERSTART_F 2
-#define TIMERRESET_F 3
-#define DIPLIMIT_REG 4
 #include <avr/io.h>
 #include <util/delay.h>
+#include "flagops.h"
+
+#define START_F 3
+#define RESET_F 4
+#define STARTPRESSED_F 5
+#define RESETPRESSED_F 6
 
 /*
-- - - INPUTS - - - 
-PIND2: START
-PIND6: RESET
-PIND7: DIP1
-PINB0: DIP2
-PINB1: DIP3
-
-- - - OUTPUTS - - -
-** Ascending right to left **
-PORTD3: LED1
-PORTD4: LED2
-PORTD5: LED3
+ * 	PORT MAPPING:
+ *
+ * 	PD2: Button1 (Start)
+ *	PB0: Button2 (Reset)
+ *	PD6: DIP1 = flag bit 2
+ *	PD7: DIP2 = flag bit 1
+ *	PB1: DIP3 = flag bit 0
+ *
+ *	PD3: LED1
+ *	PD4: LED2
+ *	PD5: LED3
 */
 
-
-int main(void)
-{
-    // OUTPUTS
-    DDRD |= (1<<DDD3) | (1<<DDD4) | (1<<DDD5);
-    PORTD |= (1<<PORTD3) | (1<<PORTD4) | (1<<PORTD5);
-    // INPUTS
-    PORTD |= (1<<PORTD2) | (1<<PORTD6) | (1<<PORTD7);
-    PORTB |= (1<<PORTB0) | (1<<PORTB1);
-
-    uint8_t flags = 0x00;
-    /* 	
-	Bit0: StartPressed | Bit1: ResetPressed 
-	Bit2: TimerStarted | Bit3: TimerReset  
-	Bits 4-7: User Input Limit
-    */
-    int8_t countdown = 0x07, loop_counter = 0x00;
-    flags |= (countdown << DIPLIMIT_REG);
-
-    while(1)
-    {
-	/*	Start Button Logic:
-	 *	- detect button rising edge
-	 *	- set TimerStarted flag		*/
-
-	if (!(PIND & (1<<PIND2)) && !(flags & (1<<STARTPRESS_F)))
-	{
-	    flags |= (1<<STARTPRESS_F) | (1<<TIMERSTART_F);
-	    flags &= ~(1<<TIMERRESET_F);
+void checkStart() {
+	if (!(PIND & (1<<PIND2)) && !flagSet(STARTPRESSED_F)) {
+		setFlag(START_F);
+		setFlag(STARTPRESSED_F);
+		clearFlag(RESET_F);
+	} else if ((PIND & (1<<PIND2)) && (flagSet(STARTPRESSED_F))) {
+		clearFlag(STARTPRESSED_F);
 	}
-	else if ((PIND & (1<<PIND2)) && (flags & (1<<STARTPRESS_F)))
-	{
-	    flags &= ~(1<<STARTPRESS_F);
+}
+
+void checkReset() {
+	if (!(PINB & (1<<PINB0)) && !flagSet(RESETPRESSED_F)) {
+		setFlag(RESET_F);
+		setFlag(RESETPRESSED_F);
+		clearFlag(START_F);
+	} else if ((PINB & (1<<PINB0)) && (flagSet(RESETPRESSED_F))) {
+		clearFlag(RESETPRESSED_F);
 	}
+}
 
-	/*	Reset Button Logic:
-	 *	- detect button rising edge
-	 *	- set TimerReset flag		*/
+int main(void) {
+	// 	LED Setup	
+	DDRD |= (1<<DDD3) | (1<<DDD4) | (1<<DDD5);
+	PORTD |= (1<<PORTD3) | (1<<PORTD4) | (1<<PORTD5);
+	//	Button Pullup Setup
+	PORTB |= (1<<PORTB0) | (1<<PORTB1);
+	PORTD |= (1<<PORTD2) | (1<<PORTD6) | (1<<PORTD7);
 
-	if (!(PIND & (1<<PIND6)) && !(flags & (1<<RESETPRESS_F)))
-	{
-	    flags |= (1<<RESETPRESS_F) | (1<<TIMERRESET_F);
-	    flags &= ~(1<<TIMERSTART_F);
+	int8_t delayCounter = 0x0;
+	flag_reg |= 0x07;
+	int8_t countdown = (flag_reg & 0x07);
+
+	while(1) {
+
+		if (delayCounter >= 10) {
+			if (flagSet(START_F)) {
+				if (countdown == 0) countdown = (flag_reg & 0x07);
+				else countdown--;
+			}
+			delayCounter = 0;
+		}
+
+		else if (flagSet(RESET_F)) {
+			//	use countdown variable as temporary dip-input
+			countdown =  ~(((PIND & (1<<PIND6)) >> 4) | ((PIND & (1<<PIND7)) >> 6) | 
+							((PINB & (1<<PINB1)) >> 1)) & 0x07;
+			flag_reg |= 0x07;
+			flag_reg &= countdown | 0xF8;
+		}
+
+		//	write to LEDs
+		PORTD &= ~((1<<PORTD3) | (1<<PORTD4) | (1<<PORTD5));
+		PORTD |= (0xF & ~countdown) << PORTD3;
+
+		checkStart();
+		checkReset();
+
+		delayCounter++;	
+		_delay_ms(100);
 	}
-	else if ((PIND & (1<<PIND6)) && (flags & (1<<RESETPRESS_F)))
-	{
-	    flags &= ~(1<<RESETPRESS_F);
-	}
-
-	/*	Timer Started State:
-	 *	- output countdown bits on leds 1-3
-	 * 	- decrement countdown every 1s		*/
-
-	if (flags & (1<<TIMERSTART_F))
-	{
-	    if (loop_counter >= 10)
-	    {
-		if (countdown < 0)  countdown = (flags >> DIPLIMIT_REG);
-		PORTD &= ~(0x7 << PORTD3);
-		PORTD |= (0x07 & ~countdown) << PORTD3;
-		countdown--;
-		loop_counter = 0;
-	    }
-	}
-
-	/*	Timer Reset State:
-	 *	- read user input from dip switches 1-3
-	 *	- save user input as new countdown limit		*/
-
-	if (flags & (1<<TIMERRESET_F))
-	{
-	    countdown = ~((PIND & (1<<PIND7))>>5 | (PINB & (1<<PINB0))<<1 | (PINB & (1<<PINB1))>>1) & 0x07;
-	    flags |= (0x0F << DIPLIMIT_REG);
-	    flags &= (countdown << DIPLIMIT_REG) | 0x0F;
-	    countdown = (flags >> DIPLIMIT_REG) & 0x07;
-	    PORTD &= ~(0x7 << PORTD3);
-	    PORTD |= (~countdown << PORTD3);
-	}
-	loop_counter++;
-	_delay_ms(100);
-
-    }
 }
