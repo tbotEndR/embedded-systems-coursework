@@ -4,11 +4,6 @@
 #include <avr/interrupt.h>
 #include "flagops.h"
 
-#define START_F 3
-#define RESET_F 4
-#define STARTPRESSED_F 5
-#define RESETPRESSED_F 6
-
 /*
  * 	PORT MAPPING:
  *
