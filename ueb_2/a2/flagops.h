@@ -1,13 +1,12 @@
 #define START_F 3
 #define RESET_F 4
-#define DIPVALS 5
 
 /*	flag_reg:
-Bits 0-2:	countdown
+Bits 0-2:	reset value
 Bit 3:		timer start flag
 Bit 4:		timer reset flag
-Bits 5-7:	dip input value	
-*/
+/*
+	
 uint8_t flag_reg = 0x00;
 
 int8_t flagSet(int8_t bitPos) {
