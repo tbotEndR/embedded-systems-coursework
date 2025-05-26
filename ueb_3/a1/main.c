@@ -1,9 +1,4 @@
 #define F_CPU 16000000L
-#define STARTPRESSED_F 0
-#define RESETPRESSED_F 1
-#define TIMERSTART_F 2
-#define TIMERRESET_F 3
-#define DIPLIMIT_REG 4
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
@@ -25,20 +20,19 @@ PORTD5: LED3
 */
  
 int8_t countdown = 0x07;
-uint8_t flags = 0x00;
 uint8_t milliseconds = 0;
 uint8_t fifties = 0;				// how many 50ms have passed
-
-/* 	
-	Bit0: StartPressed | Bit1: ResetPressed
-    Bit2: TimerStarted | Bit3: TimerReset  
-    Bits 4-7: User Input Limit
-*/
+									 
+uint8_t dip_limit_input = 0x00;
+char start_state = '0';
+char start_pressed = '0';
+char reset_state = '0';
+char reset_pressed = '0';
 
 ISR(PCINT2_vect)
 {
     //	reset counter back to user defined limit
-    countdown = (flags >> DIPLIMIT_REG);
+    countdown = dip_limit_input;
 }
 
 ISR(TIMER0_OVF_vect)
@@ -68,7 +62,6 @@ int main(void)
     //	enable timer overflow interrupt
     TIMSK0 |= (1<<TOIE0);
     sei();
-    flags |= (countdown << DIPLIMIT_REG);
 
     while(1)
     {
@@ -77,52 +70,49 @@ int main(void)
 		if (milliseconds >= 50) {
 			// check buttons
 			if (!(PIND & (1<<PIND2))) {
-				if (!(flags & (1<<STARTPRESSED_F))) {
-					flags |= (1<<STARTPRESSED_F);	
-					flags &= ~(1<<TIMERRESET_F);
-					flags |= (1<<TIMERSTART_F);	
+				if (start_pressed == '0') {
+					start_pressed = '1';
+					reset_state = '0';
+					start_state = '1';
 				}
-			} else flags &= ~(1<<STARTPRESSED_F);
+			} else start_pressed = '0';
 
 			if (!(PINB & (1<<PINB0))){
-				if (!(flags & (1<<RESETPRESSED_F))) {
-					flags |= (1<<RESETPRESSED_F);
-					flags &= ~(1<<TIMERSTART_F);
-					flags |= (1<<TIMERRESET_F);
+				if (reset_state == '0') {
+					reset_pressed = '1';
+					start_state = '0';
+					reset_state = '1';
 				}
-			} else flags &= ~(1<<RESETPRESSED_F); 
+			} else reset_pressed = '0'; 
 
-			fifties++;
-			milliseconds = 0;
+			/*	Timer Reset State:
+			 *	- read user input from dip switches 1-3
+			 *	- save user input as new countdown limit		*/
+			if (reset_state == '1')  {
+				dip_limit_input = ~((PIND & (1<<PIND6))>>4 | (PIND & (1<<PIND7))>>6 | (PINB & (1<<PINB1))>>1) & 0x07;
+				countdown = dip_limit_input;
+				PORTD &= ~(0x7 << PORTD3);
+				PORTD |= (0x07 & ~countdown) << PORTD3;
+			}
+
+				fifties++;
+				milliseconds = 0;
 		}
 
 		/*	Timer Started State:
 		 *	- output countdown bits on leds 1-3
 		 * 	- decrement countdown every 1s		*/
 
-		if (fifties >= 20) {
-			if (flags & (1<<TIMERSTART_F)) {
-				if (countdown < 0) PORTD ^= (1<<PORTD0);
-				PORTD &= ~(0x7 << PORTD3);
-				PORTD |= (0x07 & ~countdown) << PORTD3;
-				countdown--;
-				fifties = 0;
-			}
-		}
-
-		/*	Timer Reset State:
-		 *	- read user input from dip switches 1-3
-		 *	- save user input as new countdown limit		*/
-
-		if (flags & (1<<TIMERRESET_F))
+		if ((start_state == '1') && (fifties >= 20))
 		{
-			countdown = ~((PIND & (1<<PIND6))>>4 | (PIND & (1<<PIND7))>>6 | (PINB & (1<<PINB1))>>1) & 0x07;
-			flags |= (0x0F << DIPLIMIT_REG);
-			flags &= (countdown << DIPLIMIT_REG) | 0x0F;
-			countdown = (flags >> DIPLIMIT_REG) & 0x07;
+			if (countdown < 0) PORTD ^= (1<<PORTD0);
 			PORTD &= ~(0x7 << PORTD3);
-			PORTD |= (~countdown << PORTD3);
+			PORTD |= (0x07 & ~countdown) << PORTD3;
+			countdown--;
+			fifties = 0;
 		}
+
+		
 
     }
 }
