@@ -37,8 +37,9 @@ ISR(PCINT2_vect)
 
 ISR(TIMER0_OVF_vect)
 {
-	//	timer interrupt is called every 4us after its 8bit counter (TCNT0) overflows
-	//	set TCNT0 to 6 so it overflows every 250 ticks aka 1ms
+	//	timer interrupt counter is incremented every 4us
+	//	timer interrupt is called once the counter overflows at 256
+	//	set TCNT0 to 6 so it overflows every 250 ticks * 4us = 1ms
 	TCNT0 = 6;									
 	milliseconds++;
 }
