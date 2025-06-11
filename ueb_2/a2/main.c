@@ -1,80 +1,117 @@
 #define F_CPU 16000000L
+#define TIMERSTART_F 2
+#define TIMERRESET_F 3
+#define DIPLIMIT_REG 4
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
-#include "flagops.h"
 
 /*
- * 	PORT MAPPING:
- *
- * 	PD2 (INT0): Button1 (Start)
- *	PC2 (PCINT10): Button2 (Reset)
- *	PB0 (PCINT0): Software Interrupt (Overflow)
- *	PD6: DIP1 = flag bit 2
- *	PD7: DIP2 = flag bit 1
- *	PB1: DIP3 = flag bit 0
- *
- *	PD3: LED1
- *	PD4: LED2
- *	PD5: LED3
+- - - INPUTS - - - 
+PIND2: START (INT0)
+PIND6: DIP1 
+PIND7: DIP2
+PINB0: RESET (PCINT0) 
+PINB1: DIP3
+
+- - - OUTPUTS - - -
+** Ascending right to left **
+PORTD0: LED OVERFLOW (PCINT16)
+PORTD3: LED1
+PORTD4: LED2
+PORTD5: LED3
+*/
+ 
+int8_t countdown = 0x07;
+uint8_t flags = 0x00;
+/* 	
+    Bit2: TimerStarted | Bit3: TimerReset  
+    Bits 4-7: User Input Limit
 */
 
-int8_t countdown = 0x07;
+ISR(INT0_vect)
+{
+    /*	Start Button Logic:
+     *	- set TimerStarted flag		*/
 
-ISR(INT0_vect) {
-	setFlag(START_F);
-	clearFlag(RESET_F);
+    flags |= (1<<TIMERSTART_F);
+    flags &= ~(1<<TIMERRESET_F);
 }
 
-ISR(PCINT1_vect) {
-	setFlag(RESET_F);
-	clearFlag(START_F);
+ISR(PCINT0_vect)
+{
+    /*	Reset Button Logic:
+     *	- set TimerReset flag		*/
+
+	flags |=  (1<<TIMERRESET_F);
+	flags &= ~(1<<TIMERSTART_F);
 }
 
-ISR(PCINT0_vect) {
-	countdown = flag_reg & 0x07;
+ISR(PCINT2_vect)
+{
+    countdown = (flags >> DIPLIMIT_REG);
 }
 
-int main(void) {
-	// 	LED Setup	
-	DDRD |= (1<<DDD3) | (1<<DDD4) | (1<<DDD5);
-	PORTD |= (1<<PORTD3) | (1<<PORTD4) | (1<<PORTD5);
-	//	Button Pullup Setup
-	PORTB |= (1<<PORTB1);
-	PORTD |= (1<<PORTD2) | (1<<PORTD6) | (1<<PORTD7);
-	PORTC |= (1<<PORTC2);
-	// Interrupt Setup
-	EICRA |= (1<<ISC01) | (1<<ISC00);		//	rising edge	
-	EIMSK |= (1<<INT0);						//	enable int0
-	PCICR |= (1<<PCIE0) | (1<<PCIE1);		//	enable pci1/0 interrupt vector
-	PCMSK1 |= (1<<PCINT10); 				//	enable pcint10
-	PCMSK0 |= (1<<PCINT0);					//	enable pcint0
-	sei();
 
-	int8_t delayCounter = 0x0;
-	flag_reg |= 0x07;
+int main(void)
+{
+    // OUTPUTS
+    DDRD |= (1<<DDD0) | (1<<DDD3) | (1<<DDD4) | (1<<DDD5);
+    PORTD |= (1<<PORTD3) | (1<<PORTD4) | (1<<PORTD5);
+    // INPUTS
+    PORTD |= (1<<PORTD2) | (1<<PORTD6) | (1<<PORTD7);
+    PORTB |= (1<<PORTB0) | (1<<PORTB1) | (1<<PORTB2);
+    /*	Interrupt setup */
+    //	set rising edge for INT0
+    EICRA &= ~((1<<ISC01) | (1<<ISC00));
+    EICRA |= (1<<ISC01);
+    //	enable INT0
+    EIMSK |= (1<<INT0);
+    //	enable pin change interrupt vectors 0 and 2
+    PCICR &= ~((1<<PCIE0) | (1<<PCIE2));
+    PCICR |= (1<<PCIE0) | (1<<PCIE2);
+    //	enable pcint0 in pcint0_vect
+    PCMSK0 |= (1<<PCINT0);
+    //	enable pcpint16 in pcint2_vect
+    PCMSK2 |= (1<<PCINT16);
+    sei();
 
-	while(1) {
+    int8_t loop_counter = 0x00;
+    flags |= (countdown << DIPLIMIT_REG);
 
-		if (delayCounter >= 10) {
-			//	write to LEDs
-			PORTD &= ~((1<<PORTD3) | (1<<PORTD4) | (1<<PORTD5));
-			PORTD |= (0xF & ~countdown) << PORTD3;
-			if (flagSet(START_F)) {
-				if (countdown == 0) countdown = (flag_reg & 0x07);
-				else countdown--;
-			}
-			delayCounter = 0;
-		}
+    while(1)
+    {
+	/*	Timer Started State:
+	 *	- output countdown bits on leds 1-3
+	 * 	- decrement countdown every 1s		*/
 
-		else if (flagSet(RESET_F)) {
-			//	use countdown variable as temporary dip-input
-			countdown =  ~(((PIND & (1<<PIND6)) >> 4) | ((PIND & (1<<PIND7)) >> 6) | ((PINB & (1<<PINB1)) >> 1)) & 0x07;
-			flag_reg |= 0x07;
-			flag_reg &= countdown | 0xF8;
-		}
-
-		delayCounter++;	
-		_delay_ms(100);
+	if (flags & (1<<TIMERSTART_F))
+	{
+	    if (loop_counter >= 10)
+	    {
+		if (countdown < 0) PORTD ^= (1<<PORTD0);
+		PORTD &= ~(0x7 << PORTD3);
+		PORTD |= (0x07 & ~countdown) << PORTD3;
+		countdown--;
+		loop_counter = 0;
+	    }
 	}
+
+	/*	Timer Reset State:
+	 *	- read user input from dip switches 1-3
+	 *	- save user input as new countdown limit		*/
+
+	if (flags & (1<<TIMERRESET_F))
+	{
+	    countdown = ~((PIND & (1<<PIND6))>>4 | (PIND & (1<<PIND7))>>6 | (PINB & (1<<PINB1))>>1) & 0x07;
+	    flags |= (0x0F << DIPLIMIT_REG);
+	    flags &= (countdown << DIPLIMIT_REG) | 0x0F;
+	    countdown = (flags >> DIPLIMIT_REG) & 0x07;
+	    PORTD &= ~(0x7 << PORTD3);
+	    PORTD |= (~countdown << PORTD3);
+	}
+	loop_counter++;
+	_delay_ms(100);
+
+    }
 }
