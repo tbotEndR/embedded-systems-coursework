@@ -4,32 +4,16 @@
 
 #include <avr/io.h>
 #include <util/delay.h>
+#include <avr/interrupt.h>
 #include "ringbuf.h"
-
-
-void USART_Init(){
-	UBRR0H = (BAUD_CONST >> 8);
-	UBRR0L = BAUD_CONST;
-	UCSR0B |= (1<<RXEN0)|(1<<TXEN0);
-}
-
-
-void USART_Transmit(unsigned char data){
-	while(!(UCSR0A & (1<<UDRE0))) ;
-	UDR0 = data;
-}
-
-
-unsigned char USART_Receive(){
-	while(!(UCSR0A & (1<<RXC0))) ;
-	return UDR0;
-}
+#include "usart_driver.h"
 
 
 int main(void)
 {
 	ringbuffer32_t rb;
 	ringbufferInit(&rb);
+	uint8_t free_cells = RINGBUFFERSIZE;
 	
 	const char meldung[]="Hier ATmega. Wer da?";
 	USART_Init();
@@ -39,20 +23,31 @@ int main(void)
 		
     while (1) 
     {
-		push(&rb, USART_Receive());
-		if (last(&rb) != 0x0d) {
-			USART_Transmit(last(&rb));
-			continue;
+		if (udr_input != 0) {
+			if (udr_input != 0x0d){
+				push(&rb, udr_input);
+				USART_Transmit(tail(&rb));
+				udr_input = 0;
+				if (--free_cells < 1) {
+					USART_Transmit(0x13);
+					udr_input = 0x0d;
+				}
+			} else {
+				USART_Transmit(0x0d);
+				USART_Transmit('\n');
+				USART_Transmit('H');
+				USART_Transmit('i');
+				USART_Transmit(' ');
+				while(head(&rb) != 0) {
+					USART_Transmit(pop(&rb));
+					if (++free_cells > 30) USART_Transmit(0x11);
+				}
+				USART_Transmit(0x0d);
+				USART_Transmit('\n');
+				udr_input = 0;
+				_delay_ms(1000);
+			}
 		}
-		
-		USART_Transmit('\n');
-		USART_Transmit('H');
-		USART_Transmit('i');
-		USART_Transmit(' ');
-		while(first(&rb) != 0)
-			USART_Transmit(pop(&rb));
-		USART_Transmit('\n');
-
     }
 }
 
